@@ -1,81 +1,73 @@
 const { v4: uuidv4 } = require('uuid');
 const express = require("express");
 const path = require("path");
- const fs = require("fs");
+const fs = require("fs");
+const util = require("util");
+
 const PORT = process.env.PORT || 3001;
 let db = [];
 
-fs.readFile('./db/db.json', (err, data) => {
-  if (err) throw err;
-  db = JSON.parse(data);
-});
+const readFileAsync = util.promisify(fs.readFile);
+const writeFileAsync = util.promisify(fs.writeFile);
+
+readFileAsync('./db/db.json', 'utf8')
+  .then((data) => {
+    db = JSON.parse(data);
+  })
+  .catch((err) => {
+    console.log(err);
+  });
 
 const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-
-
 app.use(express.static('public'));
 
 app.get('/api/notes', (req, res) => {
-    
-    console.log(db);
-    res.status(200).json(db);
-}
-)
+  res.status(200).json(db);
+});
 
-app.post('/api/notes', (req, res) =>{
-    console.log(req.body);
-    const newNote = {
-        id: uuidv4(),
-        ...req.body
-    }
-    db.push(newNote);
-    fs.writeFile("./db/db.json", JSON.stringify(db), (err)=> err ? console.log(err): res.status(200).json(db));
-}
-)
-
-app.delete('/api/notes/:id', (req, res) => {
-    const noteId = req.params.id;
-    fs.readFile('./db/db.json', 'utf8', (err, data) => {
-      if (err) {
-        console.log(err);
-        res.status(500).json({ message: 'Internal server error' });
-        return;
-      }
-  
-      const dbData = JSON.parse(data);
-      const newArray = dbData.filter(notes => notes.id !== noteId);
-  
-      fs.writeFile('./db/db.json', JSON.stringify(newArray), (err) => {
-        if (err) {
-          console.log(err);
-          res.status(500).json({ message: 'Internal server error' });
-          return;
-        }
-  
-        res.status(200).json(newArray);
-      });
+app.post('/api/notes', (req, res) => {
+  const newNote = {
+    id: uuidv4(),
+    ...req.body,
+  };
+  db.push(newNote);
+  writeFileAsync('./db/db.json', JSON.stringify(db))
+    .then(() => {
+      res.status(200).json(db);
+    })
+    .catch((err) => {
+      console.log(err);
+      res.status(500).json({ message: 'Internal server error' });
     });
 });
+
+app.delete('/api/notes/:id', (req, res) => {
+  const noteId = req.params.id;
+  const newArray = db.filter((notes) => notes.id !== noteId);
+  writeFileAsync('./db/db.json', JSON.stringify(newArray))
+    .then(() => {
+      db = newArray;
+      res.status(200).json(newArray);
+    })
+    .catch((err) => {
+      console.log(err);
+      res.status(500).json({ message: 'Internal server error' });
+    });
+});
+
 //routes
-app.get("/", (req, res) => {
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, './public/index.html'));
+});
 
-    res.sendFile(path.join(__dirname, "./public/index.html"));
-})
-
-app.get("/notes", (req, res) => {
-
-    res.sendFile(path.join(__dirname, "./public/notes.html"));
-})
-
-
+app.get('/notes', (req, res) => {
+  res.sendFile(path.join(__dirname, './public/notes.html'));
+});
 
 app.listen(PORT, () => {
-    console.log("server has started!");
-}
-)
-
-//need to put fs to do something
+  console.log('server has started!');
+});
